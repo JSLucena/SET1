@@ -26,11 +26,13 @@ volatile unsigned int ctx_switches = 0;
 typedef struct
 {
 	volatile uint32_t priority;
-	volatile uint32_t curr_priority = priority;
-	volatile uint32_t state = READY;
+	volatile uint32_t curr_priority;
+	volatile uint32_t state;
 	jmp_buf regs;
 	
 } TCB;
+
+TCB tasksTCB[N_TASKS], idle;
 
 
 
@@ -120,6 +122,20 @@ void sched_init()
 
 
 /* tasks */
+void idle_task(void)
+{
+	volatile char guard[1024];		/* reserve some stack space */
+	int cnt = 300000;
+
+	task_init(guard, sizeof(guard));
+
+	while (1) {				/* task body */
+		printf("[idle]\n");
+		task_wfi();			/* wait for an interrupt, to avoid too much text */
+	}
+}
+
+
 
 void task2(void)
 {
