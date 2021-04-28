@@ -9,6 +9,9 @@
 #define BLOCKED		2
 #define RUNNING		3
 
+#define DEBUG 1
+
+
 typedef volatile uint32_t jmp_buf[20];
 
 int32_t _interrupt_set(int32_t s);
@@ -23,16 +26,18 @@ void (*tasks[N_TASKS])(void) = {[0 ... N_TASKS - 1] = 0};
 volatile int cur = 0, n_tasks = 0;
 volatile unsigned int ctx_switches = 0;
 
+volatile int running = 0;
 typedef struct
 {
 	volatile uint32_t priority;
 	volatile uint32_t curr_priority;
 	volatile uint32_t state;
+	void (*task)();
 	jmp_buf regs;
 	
 } TCB;
 
-TCB tasksTCB[N_TASKS], idle;
+TCB tasksTCB[N_TASKS];
 
 
 
@@ -41,12 +46,12 @@ TCB tasksTCB[N_TASKS], idle;
 
 void schedule(void)
 {
-	if (!setjmp(jmp[cur])) {
-		if (n_tasks == ++cur)
-			cur = 0;
+	if (!setjmp(tasksTCB[running].regs)) {
+		if (n_tasks == ++running)
+			running = 0;
 		ctx_switches++;
 		_interrupt_set(1);
-		longjmp(jmp[cur], 1);
+		longjmp(tasksTCB[running].regs, 1);
 	}
 }
 
@@ -73,22 +78,25 @@ void task_wfi()
 	while (s == ctx_switches);
 }
 
-int task_add(void *task)
+int task_add(void *task, int priority)
 {
-	tasks[cur++] = task;
+	tasksTCB[cur].task = task;
+	tasksTCB[cur].priority = priority;
+	tasksTCB[cur].curr_priority = priority;
+	tasksTCB[cur].state = READY;
 	n_tasks++;
 	
-	return cur - 1;
+	return cur++;
 }
 
-void task_block(void *task)
+void task_block(int tsk)
 {
-	
+	tasksTCB[tsk].state = BLOCKED;
 }
 
-void task_resume(void *task)
+void task_resume(int tsk)
 {
-	
+	tasksTCB[tsk].state = READY;
 }
 
 void task_init(volatile char *guard, int guard_size)
@@ -115,9 +123,11 @@ void timer_init()
 
 void sched_init()
 {
-	cur = 0;
+	running = 0;
 	TIMERMASK |= MASK_TIMER1CTC;		/* enable interrupt mask for TIMER1 CTC events */
-	(*tasks[0])();
+	
+	tasksTCB[0].state = RUNNING;
+	(tasksTCB[0].task)();
 }
 
 
@@ -125,7 +135,6 @@ void sched_init()
 void idle_task(void)
 {
 	volatile char guard[1024];		/* reserve some stack space */
-	int cnt = 300000;
 
 	task_init(guard, sizeof(guard));
 
@@ -182,9 +191,18 @@ void task0(void)
 int main(void)
 {
 	timer_init();
-	task_add(task0);
-	task_add(task1);
-	task_add(task2);
+	task_add(idle_task,255);
+	task_add(task0,2);
+	task_add(task1,3);
+	task_add(task2,2);
+	
+	#ifdef DEBUG
+		printf("[task idle prio %d]\n",tasksTCB[0].priority);
+		printf("[task 0 prio %d]\n",tasksTCB[1].priority);
+		printf("[task 1 prio %d]\n",tasksTCB[2].priority);
+		printf("[task 2 prio %d]\n",tasksTCB[3].priority);
+	#endif
+	
 	sched_init();
 
 	return 0;
