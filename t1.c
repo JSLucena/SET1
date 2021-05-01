@@ -43,6 +43,33 @@ int first_exec = 1;
 
 
 /* kernel functions */
+int task_add(void *task, int priority)
+{
+	tasksTCB[cur].task = task;
+	tasksTCB[cur].priority = priority;
+	tasksTCB[cur].curr_priority = priority;
+	tasksTCB[cur].state = READY;
+	
+	//tasks[cur] = task;
+	
+	n_tasks++;
+	
+	return cur++;
+}
+
+void task_block(int tsk)
+{
+	tasksTCB[tsk+1].state = BLOCKED;
+}
+
+void task_resume(int tsk)
+{
+	tasksTCB[tsk+1].state = READY;
+}
+
+
+
+
 
 void schedule(void)
 {
@@ -58,8 +85,11 @@ void schedule(void)
 			
 	}
 	
-	int next_task = 11;
-	for(int i = 1; i < n_tasks; i++)
+	
+	
+	
+	int next_task = 0;
+	for(int i = 1; i < n_tasks-1; i++)
 	{
 		if(tasksTCB[i].state == READY && tasksTCB[i].curr_priority > 0)
 			tasksTCB[i].curr_priority--;
@@ -67,20 +97,20 @@ void schedule(void)
 			printf("task = %d : prio = %d : curr_prio %d : state %d \t",i-1, tasksTCB[i].priority, tasksTCB[i].curr_priority, tasksTCB[i].state);
 		#endif DEBUG
 		
-		if(tasksTCB[i].curr_priority == 0 && next_task == 11)
+		if(tasksTCB[i].curr_priority == 0 && next_task == 0 && tasksTCB[i].state == READY)
 				next_task = i;
 	}
 		#ifdef DEBUG
-			printf("\n");
+			printf(" next task %d \n", next_task-1);
 		#endif DEBUG
 		
 		
-	if(next_task != 11)	
-	{
+	
 		if (!setjmp(tasksTCB[running].regs)) 
 		{
 			tasksTCB[running].curr_priority = tasksTCB[running].priority;
-			tasksTCB[running].state = READY;
+			if(tasksTCB[running].state != BLOCKED)
+				tasksTCB[running].state = READY;
 			
 			running = next_task;
 			tasksTCB[running].state = RUNNING;
@@ -88,7 +118,6 @@ void schedule(void)
 			_interrupt_set(1);
 			longjmp(tasksTCB[running].regs, 1);
 		}				
-	}
 }
 void timer1ctc_handler(void)
 {
@@ -110,32 +139,32 @@ void task_wfi()
 	volatile unsigned int s;
 	
 	s = ctx_switches;
+	
+	switch (ctx_switches)
+	{
+		case 20:
+			task_block(0);
+			schedule();
+			break;
+		case 25:
+			task_block(1);
+			task_block(2);
+			task_resume(0);
+			schedule();
+			break;
+		case 30:
+			task_resume(1);
+			break;
+		case 35:
+			task_resume(2);
+			break;
+
+	}
+	
+	
 	while (s == ctx_switches);
 }
 
-int task_add(void *task, int priority)
-{
-	tasksTCB[cur].task = task;
-	tasksTCB[cur].priority = priority;
-	tasksTCB[cur].curr_priority = priority;
-	tasksTCB[cur].state = READY;
-	
-	//tasks[cur] = task;
-	
-	n_tasks++;
-	
-	return cur++;
-}
-
-void task_block(int tsk)
-{
-	tasksTCB[tsk].state = BLOCKED;
-}
-
-void task_resume(int tsk)
-{
-	tasksTCB[tsk].state = READY;
-}
 
 void task_init(volatile char *guard, int guard_size)
 {
@@ -145,15 +174,13 @@ void task_init(volatile char *guard, int guard_size)
 	if (!setjmp(tasksTCB[running].regs)) {
 		if (n_tasks-1 != running)
 			(tasksTCB[++running].task)();
-		else
-			schedule();
 	}	
 	
 }
 
 void timer_init()
 {
-	TIMER1PRE = TIMERPRE_DIV64;
+	TIMER1PRE = TIMERPRE_DIV256;
 
 	/* unlock TIMER1 for reset */
 	TIMER1 = TIMERSET;
@@ -182,9 +209,7 @@ void idle_task(void)
 	
 	task_init(guard, sizeof(guard));
 	
-	#ifdef DEBUG
-	printf("IDLE\n");
-	#endif
+	
 	
 	while (1) {				/* task body */
 		printf("[idle]\n");
@@ -201,9 +226,7 @@ void task2(void)
 
 	task_init(guard, sizeof(guard));
 
-	#ifdef DEBUG
-	printf("TASK 2\n");
-	#endif
+	
 
 
 	while (1) {				/* task body */
@@ -219,9 +242,7 @@ void task1(void)
 
 	task_init(guard, sizeof(guard));
 
-	#ifdef DEBUG
-	printf("TASK 1\n");
-	#endif
+	
 
 	while (1) {				/* task body */
 		printf("[task 1 %d]\n", cnt++);
@@ -236,9 +257,7 @@ void task0(void)
 
 	task_init(guard, sizeof(guard));
 
-	#ifdef DEBUG
-	printf("TASK 0\n");
-	#endif
+
 
 	while (1) {				/* task body */
 		printf("[task 0 %d]\n", cnt++);
@@ -253,9 +272,10 @@ int main(void)
 {
 	
 	task_add(idle_task,255);
-	task_add(task0,2);
-	task_add(task1,3);
-	task_add(task2,2);
+	task_add(task0,3);
+	task_add(task1,6);
+	task_add(task2,3);
+	task_add(idle_task,255);
 	
 	timer_init();
 	#ifdef DEBUG
