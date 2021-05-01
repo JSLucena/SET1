@@ -38,7 +38,7 @@ typedef struct
 } TCB;
 
 TCB tasksTCB[N_TASKS];
-
+int first_exec = 1;
 
 
 
@@ -46,15 +46,50 @@ TCB tasksTCB[N_TASKS];
 
 void schedule(void)
 {
-	if (!setjmp(tasksTCB[cur].regs)) {
-		if (n_tasks == ++cur)
-			cur = 0;
-		ctx_switches++;
-		_interrupt_set(1);
-		longjmp(tasksTCB[cur].regs, 1);
+	if(first_exec == 1)
+	{
+			first_exec = 0;
+			if (!setjmp(tasksTCB[running].regs))
+			{
+				running = 0;
+				longjmp(tasksTCB[running].regs, 1);
+			}
+			
+			
+	}
+	
+	int next_task = 11;
+	for(int i = 1; i < n_tasks; i++)
+	{
+		if(tasksTCB[i].state == READY && tasksTCB[i].curr_priority > 0)
+			tasksTCB[i].curr_priority--;
+		#ifdef DEBUG
+			printf("task = %d : prio = %d : curr_prio %d : state %d \t",i-1, tasksTCB[i].priority, tasksTCB[i].curr_priority, tasksTCB[i].state);
+		#endif DEBUG
+		
+		if(tasksTCB[i].curr_priority == 0 && next_task == 11)
+				next_task = i;
+	}
+		#ifdef DEBUG
+			printf("\n");
+		#endif DEBUG
+		
+		
+	if(next_task != 11)	
+	{
+		if (!setjmp(tasksTCB[running].regs)) 
+		{
+			tasksTCB[running].curr_priority = tasksTCB[running].priority;
+			tasksTCB[running].state = READY;
+			
+			running = next_task;
+			tasksTCB[running].state = RUNNING;
+			ctx_switches++;
+			_interrupt_set(1);
+			longjmp(tasksTCB[running].regs, 1);
+		}				
 	}
 }
-
 void timer1ctc_handler(void)
 {
 	schedule();
@@ -107,9 +142,11 @@ void task_init(volatile char *guard, int guard_size)
 	memset((char *)guard, 0, guard_size);
 	
 	
-	if (!setjmp(tasksTCB[cur].regs)) {
-		if (n_tasks-1 != cur)
-			(tasksTCB[++cur].task)();
+	if (!setjmp(tasksTCB[running].regs)) {
+		if (n_tasks-1 != running)
+			(tasksTCB[++running].task)();
+		else
+			schedule();
 	}	
 	
 }
