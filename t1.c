@@ -39,8 +39,8 @@ typedef struct
 
 TCB tasksTCB[N_TASKS];
 int first_exec = 1;
-
-
+int queue[N_TASKS/2] = {0,0,0,0,0};
+int q_pointer = 0;
 
 /* kernel functions */
 int task_add(void *task, int priority)
@@ -73,6 +73,9 @@ void task_resume(int tsk)
 
 void schedule(void)
 {
+	
+	int found = 0;
+	
 	if(first_exec == 1)
 	{
 			first_exec = 0;
@@ -97,9 +100,33 @@ void schedule(void)
 			printf("task = %d : prio = %d : curr_prio %d : state %d \t",i-1, tasksTCB[i].priority, tasksTCB[i].curr_priority, tasksTCB[i].state);
 		#endif DEBUG
 		
-		if(tasksTCB[i].curr_priority == 0 && next_task == 0 && tasksTCB[i].state == READY)
-				next_task = i;
+		if(tasksTCB[i].curr_priority == 0 && tasksTCB[i].state == READY)
+		{
+				for(int j = 0; j < N_TASKS/2; j++)
+				{
+						if(i == queue[j])
+							found = 1;
+						
+				}
+				if(found == 0)
+					{
+						queue[q_pointer] = i;
+						q_pointer++;
+					}
+		}
+		found = 0;
 	}
+	
+		next_task = queue[0];
+		printf("%d ",q_pointer);
+		for(int i = 0; i < N_TASKS/2 - 1;i++)
+		{
+			printf("%d",queue[i]-1);
+			queue[i] = queue[i+1];
+		}
+		queue[N_TASKS/2 - 1] = 0;
+		if(q_pointer > 0)
+			q_pointer--;
 		#ifdef DEBUG
 			printf(" next task %d \n", next_task-1);
 		#endif DEBUG
@@ -273,7 +300,7 @@ int main(void)
 	
 	task_add(idle_task,255);
 	task_add(task0,3);
-	task_add(task1,6);
+	task_add(task1,4);
 	task_add(task2,3);
 	task_add(idle_task,255);
 	
